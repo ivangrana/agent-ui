@@ -6,6 +6,7 @@ import {
   SessionEntry,
   TeamDetails,
   type ChatMessage,
+  type ToolExecution,
   type UserInputField
 } from '@/types/os'
 
@@ -69,6 +70,8 @@ interface Store {
   setPausedToolName: (name: string | null) => void
   pausedToolCallId: string | null
   setPausedToolCallId: (id: string | null) => void
+  pausedToolExecution: ToolExecution | null
+  setPausedToolExecution: (toolExecution: ToolExecution | null) => void
 
   // User confirmation pause state
   isPausedForConfirmation: boolean
@@ -148,6 +151,9 @@ export const useStore = create<Store>()(
       pausedToolCallId: null,
       setPausedToolCallId: (pausedToolCallId) =>
         set(() => ({ pausedToolCallId })),
+      pausedToolExecution: null,
+      setPausedToolExecution: (pausedToolExecution) =>
+        set(() => ({ pausedToolExecution })),
 
       isPausedForConfirmation: false,
       setIsPausedForConfirmation: (isPausedForConfirmation) =>

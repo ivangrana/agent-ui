@@ -163,6 +163,7 @@ export interface RunResponse {
   session_id?: string
   tool?: ToolCall
   tools?: Array<ToolCall>
+  requirements?: ActiveRequirement[]
   created_at: number
   extra_data?: AgentExtraData
   images?: ImageData[]
@@ -288,10 +289,11 @@ export interface UserInputField {
 export interface ToolExecution {
   tool_call_id: string
   tool_name: string
-  tool_args: Record<string, string>
+  tool_args: Record<string, unknown>
   result?: string
   confirmed?: boolean
-  user_input?: Record<string, string>
+  confirmation_note?: string
+  answered?: boolean
   requires_confirmation?: boolean
   requires_user_input?: boolean
   user_input_schema?: UserInputField[]

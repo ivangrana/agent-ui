@@ -8,7 +8,8 @@ import {
   RunEvent,
   RunResponseContent,
   type RunResponse,
-  type ActiveRequirement
+  type ActiveRequirement,
+  type UserInputField
 } from '@/types/os'
 import { constructEndpointUrl } from '@/lib/constructEndpointUrl'
 import useAIResponseStream from './useAIResponseStream'
@@ -38,6 +39,9 @@ const useAIChatStreamHandler = () => {
   const setPausedSessionId = useStore((state) => state.setPausedSessionId)
   const setPausedToolName = useStore((state) => state.setPausedToolName)
   const setPausedToolCallId = useStore((state) => state.setPausedToolCallId)
+  const setPausedToolExecution = useStore(
+    (state) => state.setPausedToolExecution
+  )
   const setIsPausedForConfirmation = useStore(
     (state) => state.setIsPausedForConfirmation
   )
@@ -359,8 +363,7 @@ const useAIChatStreamHandler = () => {
             } else if (
               chunk.event === RunEvent.RunPaused
             ) {
-              const chunkAny = chunk as unknown as Record<string, unknown>
-              const rawReqs = chunkAny.requirements ?? []
+              const rawReqs = chunk.requirements ?? []
               const requirements: ActiveRequirement[] = Array.isArray(rawReqs)
                 ? rawReqs as ActiveRequirement[]
                 : []
@@ -391,12 +394,14 @@ const useAIChatStreamHandler = () => {
                 setPendingConfirmationToolCallId(
                   (toolExec?.tool_call_id ?? null) as string | null
                 )
+                setPausedToolExecution(toolExec ?? null)
                 setPausedToolName(toolName)
                 setPausedToolCallId((toolExec?.tool_call_id ?? null) as string | null)
                 setIsPausedForConfirmation(true)
               } else if (userInputReq?.user_input_schema || userInputReq?.tool_execution?.user_input_schema) {
                 const schema = userInputReq.user_input_schema ?? userInputReq.tool_execution?.user_input_schema
-                setPendingUserInputFields(schema as any)
+                setPendingUserInputFields((schema ?? []) as UserInputField[])
+                setPausedToolExecution(userInputReq.tool_execution ?? null)
                 setPausedToolName(toolName)
                 setPausedToolCallId((userInputReq.tool_execution?.tool_call_id ?? null) as string | null)
                 setIsPausedForInput(true)

@@ -37,9 +37,11 @@ const useContinueRun = () => {
   const setPausedSessionId = useStore((state) => state.setPausedSessionId)
   const setPausedToolName = useStore((state) => state.setPausedToolName)
   const setPausedToolCallId = useStore((state) => state.setPausedToolCallId)
+  const setPausedToolExecution = useStore(
+    (state) => state.setPausedToolExecution
+  )
   const pausedRunId = useStore((state) => state.pausedRunId)
   const pausedSessionId = useStore((state) => state.pausedSessionId)
-  const pausedToolCallId = useStore((state) => state.pausedToolCallId)
   const [agentId] = useQueryState('agent')
   const [teamId] = useQueryState('team')
   const [sessionId, setSessionId] = useQueryState('session')
@@ -68,6 +70,7 @@ const useContinueRun = () => {
     setPausedSessionId(null)
     setPausedToolName(null)
     setPausedToolCallId(null)
+    setPausedToolExecution(null)
   }, [
     setIsPausedForInput,
     setPendingUserInputFields,
@@ -78,7 +81,8 @@ const useContinueRun = () => {
     setPausedRunId,
     setPausedSessionId,
     setPausedToolName,
-    setPausedToolCallId
+    setPausedToolCallId,
+    setPausedToolExecution
   ])
 
   const streamContinuation = useCallback(
@@ -209,15 +213,14 @@ const useContinueRun = () => {
             )
             if (newSessionId) {
               useStore.getState().setSessionsData(
-                (prevSessionsData: any) =>
+                (prevSessionsData) =>
                   prevSessionsData?.filter(
-                    (session: any) => session.session_id !== newSessionId
+                    (session) => session.session_id !== newSessionId
                   ) ?? null
               )
             }
           } else if (chunk.event === RunEvent.RunPaused) {
-            const chunkAny = chunk as unknown as Record<string, unknown>
-            const rawReqs = chunkAny.requirements ?? []
+            const rawReqs = chunk.requirements ?? []
             const requirements: ActiveRequirement[] = Array.isArray(rawReqs)
               ? rawReqs as ActiveRequirement[]
               : []
@@ -241,6 +244,7 @@ const useContinueRun = () => {
 
             if (confirmationReq) {
               const toolExec = confirmationReq.tool_execution
+              setPausedToolExecution(toolExec ?? null)
               setPendingConfirmationToolName(toolName)
               setPendingConfirmationToolArgs(
                 (toolExec?.tool_args ?? {}) as Record<string, string>
@@ -254,6 +258,7 @@ const useContinueRun = () => {
             } else if (userInputReq?.user_input_schema || userInputReq?.tool_execution?.user_input_schema) {
               const schema = userInputReq.user_input_schema ?? userInputReq.tool_execution?.user_input_schema
               setPendingUserInputFields(schema as UserInputField[])
+              setPausedToolExecution(userInputReq.tool_execution ?? null)
               setPausedToolName(toolName)
               setPausedToolCallId((userInputReq.tool_execution?.tool_call_id ?? null) as string | null)
               setIsPausedForInput(true)
@@ -291,6 +296,7 @@ const useContinueRun = () => {
       setPendingConfirmationToolCallId,
       setPausedToolName,
       setPausedToolCallId,
+      setPausedToolExecution,
       setIsPausedForConfirmation,
       setPendingUserInputFields,
       setIsPausedForInput
@@ -338,8 +344,23 @@ const useContinueRun = () => {
     async (userInputValues: Record<string, string>) => {
       if (!pausedRunId || !pausedSessionId) return
 
-      const toolCallId = useStore.getState().pausedToolCallId || pausedRunId
-      const toolName = useStore.getState().pausedToolName || ''
+      const pausedState = useStore.getState()
+      const pausedToolExecution = pausedState.pausedToolExecution
+      const toolCallId =
+        pausedToolExecution?.tool_call_id ||
+        pausedState.pausedToolCallId ||
+        pausedRunId
+      const toolName =
+        pausedToolExecution?.tool_name || pausedState.pausedToolName || ''
+
+      const schemaSource = pausedToolExecution?.user_input_schema?.length
+        ? pausedToolExecution.user_input_schema
+        : pausedState.pendingUserInputFields
+
+      const userInputSchema = schemaSource.map((field) => ({
+        ...field,
+        value: userInputValues[field.name] ?? field.value ?? null
+      }))
 
       clearPausedState()
       setStreamingErrorMessage('')
@@ -347,10 +368,12 @@ const useContinueRun = () => {
 
       const toolsPayload = [
         {
+          ...(pausedToolExecution ?? {}),
           tool_call_id: toolCallId,
           tool_name: toolName,
-          tool_args: {},
-          user_input: userInputValues
+          tool_args: pausedToolExecution?.tool_args ?? {},
+          requires_user_input: true,
+          user_input_schema: userInputSchema
         }
       ]
 
@@ -380,9 +403,12 @@ const useContinueRun = () => {
     async (confirmed: boolean) => {
       if (!pausedRunId || !pausedSessionId) return
 
-      const confirmationToolName = useStore.getState().pendingConfirmationToolName
-      const confirmationToolArgs = useStore.getState().pendingConfirmationToolArgs
-      const confirmationToolCallId = useStore.getState().pendingConfirmationToolCallId
+      const pausedState = useStore.getState()
+      const pausedToolExecution = pausedState.pausedToolExecution
+      const confirmationToolCallId =
+        pausedState.pendingConfirmationToolCallId
+      const confirmationToolName = pausedState.pendingConfirmationToolName
+      const confirmationToolArgs = pausedState.pendingConfirmationToolArgs
 
       clearPausedState()
       setStreamingErrorMessage('')
@@ -390,9 +416,15 @@ const useContinueRun = () => {
 
       const toolsPayload = [
         {
-          tool_call_id: confirmationToolCallId || pausedRunId,
-          tool_name: confirmationToolName || '',
-          tool_args: confirmationToolArgs,
+          ...(pausedToolExecution ?? {}),
+          tool_call_id:
+            pausedToolExecution?.tool_call_id ||
+            confirmationToolCallId ||
+            pausedRunId,
+          tool_name:
+            pausedToolExecution?.tool_name || confirmationToolName || '',
+          tool_args: pausedToolExecution?.tool_args ?? confirmationToolArgs,
+          requires_confirmation: true,
           confirmed
         }
       ]
@@ -423,8 +455,15 @@ const useContinueRun = () => {
     async () => {
       if (!pausedRunId || !pausedSessionId) return
 
-      const toolCallId = useStore.getState().pausedToolCallId || pausedRunId
-      const toolName = useStore.getState().pausedToolName || ''
+      const pausedState = useStore.getState()
+      const pausedToolExecution = pausedState.pausedToolExecution
+      const isConfirmation = pausedState.isPausedForConfirmation
+      const toolCallId =
+        pausedToolExecution?.tool_call_id ||
+        pausedState.pausedToolCallId ||
+        pausedRunId
+      const toolName =
+        pausedToolExecution?.tool_name || pausedState.pausedToolName || ''
 
       clearPausedState()
       setStreamingErrorMessage('')
@@ -432,9 +471,15 @@ const useContinueRun = () => {
 
       const toolsPayload = [
         {
+          ...(pausedToolExecution ?? {}),
           tool_call_id: toolCallId,
           tool_name: toolName,
-          tool_args: {},
+          tool_args: pausedToolExecution?.tool_args ?? {},
+          requires_confirmation: isConfirmation,
+          requires_user_input: false,
+          user_input_schema: isConfirmation
+            ? pausedToolExecution?.user_input_schema
+            : undefined,
           confirmed: false
         }
       ]
