@@ -97,7 +97,7 @@ const ConfirmationDialog = () => {
           <button
             type="button"
             disabled={isSubmitting}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm disabled:opacity-50"
+            className="px-4 py-2 border border-border text-sm text-muted-foreground hover:text-green-600 rounded-md disabled:opacity-50"
             onClick={handleApprove}
           >
             {isSubmitting ? 'Submitting...' : 'Approve'}
